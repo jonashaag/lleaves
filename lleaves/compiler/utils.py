@@ -14,7 +14,7 @@ class DecisionType:
     DEFAULT_LEFT_MASK = 2
 
     def __init__(self, idx):
-        if idx not in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]:
+        if idx not in range(12):
             raise ValueError(
                 f"Decision type {idx} not yet tested for. {ISSUE_ERROR_MSG}"
             )

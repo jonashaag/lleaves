@@ -1,4 +1,8 @@
 from llvmlite import ir
+# Ich denke es waere hilfreich hier zumindest ein einfaches Beispiel anzubringen,
+# wie genau der generierte Code aussieht bzw. was die Idee ist.
+# Aktuell muss ich mir ein Beispiel von generiertem Code anschauen, um schnell
+# ein Gefuehl dafuer zu bekommen, was in dieser Datei passiert.
 
 from lleaves.compiler.utils import MissingType
 
@@ -25,6 +29,9 @@ def dconst(value):
 
 
 def scalar_func(cat_bitmap):
+    # Ich finde es nicht so cool, dass diese Funktion ihren Typen selbst irgendwo nachguckt.
+    # Besser waere es, wenn sie is_cat als Argument bekommt. Dann ist sie leichter
+    # testbar und du hast die Konzepte voneinander getrennt.
     return ir.FunctionType(
         DOUBLE, (INT_CAT if is_cat else DOUBLE for is_cat in cat_bitmap)
     )
@@ -42,6 +49,12 @@ def ir_from_ast(forest):
 
     tree_funcs = []
     for tree in forest.trees:
+        # Wenn die Iterationen dieses Loops voneinander unabhaengig sind
+        # ("Ausfuehrungsreihenfolge ist egal"), dann bin ich ein grosser
+        # Freund davon, den Body des Loops in eine Funktion zu packen
+        # und map()/list comprehension zu benutzen. Dann ist es klarer,
+        # dass es keinen shared state o.ae. gibt, sondern hier einfach nur
+        # der gleiche Code auf vielen Elementen ausgefuehrt wird.
         # Declare the function for this tree
         tree_func = ir.Function(
             module, scalar_func(tree.categorical_bitmap), name=str(tree)
@@ -77,6 +90,12 @@ def gen_leaf_node(node_block, leaf):
 def gen_decision_node(func, node_block, node):
     """generate code for decision node, recursing into children"""
     builder = ir.IRBuilder(node_block)
+    # Diese Funktion hat hohe Komplexitaet, weil es viele potentielle Faelle gibt:
+    # 2 ** |(is_fused_double_leaf_node, is_categorical, left_block, right_block)| = 16 Stueck.
+    # Habe die Logik nicht komplett durchdacht, aber wenn es die Moeglichkeit gibt,
+    # wuerde ich versuchen, die Faelle lieber separat aufzuschreiben und ggf. etwas
+    # "do not repeat yourself" dafuer zu opfern. Generell wuerde ich dazu tendieren,
+    # lieber mehr Code zu schreiben und mich zu wiederholen, als Dinge komplex zu machen.
 
     # optimization for node where both children are leaves (switch instead of cbranch)
     is_fused_double_leaf_node = node.left.is_leaf() and node.right.is_leaf()
@@ -85,6 +104,9 @@ def gen_decision_node(func, node_block, node):
         right_block = None
         # categorical nodes have a fastpath which can branch-right early
         # so they still need a right block
+        # Btw, hier nutzt du is_categorical als property/Attribut, aber
+        # is_leaf ist eine Funktion. Kommt man schnell durcheinander und schreibt
+        # dann ausversehen "is_leaf" ohne "()" hin.
         if node.decision_type.is_categorical:
             right_block = func.append_basic_block(name=str(node.right))
     else:

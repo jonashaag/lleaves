@@ -20,6 +20,32 @@ except ImportError:
         pass
 
 
+# Habe das Gefuehl dass in der `Model` Klasse mindestens 2 Dinge passieren die nicht
+# unbedingt zusammen gehoeren:
+
+# 1) Data preprocessing, das eigentlich rein funktional/stateless ist
+
+# 2) "Lazy" compilation mit caching. Koennte man das nicht einfach komplett von der
+# Klasse trennen und auf den Nutzer abwaelzen, dass das nicht mehrfach kompiliert wird?
+# Also das Interface so aendern, dass es wie folgt benutzt wird:
+#   
+#   parsed_model = parse_model(filepath)
+#   predict_func = compile_to_func(parsed_model)
+#   objective_func = get_objective_func(parsed_model)
+#
+# Dann koennte das sklearn interface nur ein wrapper darum sein:
+#   
+#   CompiledModel(predict_func, objective_func, parsed_model.number_of_features)
+# 
+# Und dann kann man das Caching ganz loeschen. Ist flexibler, wenn der Nutzer das
+# macht, oder?
+#
+# Meine Vision fuer dieses Modul ist, dass es ein Haufen unabhaengiger Funktionen
+# ist, und die `Model`-Klasse nur ein ca. 10-zeiliger Wrapper, um das sklearn
+# Interface zu unterstuetzen.
+
+
+
 class Model:
     """
     The base class of lleaves.
@@ -35,6 +61,7 @@ class Model:
     _c_entry_func = None
 
     def __init__(self, model_file=None):
+        # model_file darf nicht None sein.
         """
         Initialize the uncompiled model.
 
@@ -43,9 +70,15 @@ class Model:
         self.model_file = model_file
         self.is_compiled = False
 
+        # model_file darf nicht None sein.
+        # Finde es bisschen ueberraschend, dass hier direkt mit dem Lexer/Scanner interagiert wird.
+        # Normalerweise wird ein Lexer nur vom Parser benutzt.
         scanned_model = scanner.scan_model_file(model_file, general_info_only=True)
+        # Finde es bisschen seltsam, dass zweimal geparsed wird, 1x hier und 1x beim Compilen.
         self._general_info = scanned_model["general_info"]
-        self._pandas_categorical = scanner.scan_pandas_categorical(model_file)
+        # ist das nicht identisch?
+        # self._pandas_categorical = scanner.scan_pandas_categorical(model_file)
+        self._pandas_categorical = scanned_model["pandas_categorical"]
 
         # objective function is implemented as an np.ufunc.
         self.objective_transf = get_objective_func(self._general_info["objective"])
@@ -56,26 +89,7 @@ class Model:
         """
         return self._general_info["max_feature_idx"] + 1
 
-    def _get_execution_engine(self):
-        """
-        Create an empty ExecutionEngine suitable for JIT code generation on
-        the host CPU. The engine is reusable for an arbitrary number of
-        modules.
-        """
-        if self._execution_engine:
-            return self._execution_engine
-
-        llvm.initialize()
-        llvm.initialize_native_target()
-        llvm.initialize_native_asmprinter()
-
-        # Create a target machine representing the host
-        target = llvm.Target.from_default_triple()
-        target_machine = target.create_target_machine()
-        # And an execution engine with an empty backing module
-        backing_mod = llvm.parse_assembly("")
-        self._execution_engine = llvm.create_mcjit_compiler(backing_mod, target_machine)
-        return self._execution_engine
+    # _get_execution_engine ist unused? Oder nicht?
 
     def _get_llvm_module(self):
         if self._IR_module:
@@ -97,6 +111,8 @@ class Model:
         if self.is_compiled:
             return
 
+        # Hat LLVM hier globalen state? was passiert wenn man das mehrfach aufruft oder
+        # parallel aufruft?
         llvm.initialize()
         llvm.initialize_native_target()
         llvm.initialize_native_asmprinter()
@@ -115,6 +131,12 @@ class Model:
         # Create execution engine for our module
         self._execution_engine = llvm.create_mcjit_compiler(module, target_machine)
 
+        # Ich glaube der cache-Code wird einfacher wenn man explizit zwei Faelle
+        # hinschreibt (Cache hit/miss).
+        # Wenn ich den Code richtig verstehe, wird gerade bei Cache hit auch
+        # "save_to_cache" ausgefuehrt und hat dann Abbruch durch den exists()
+        # call? Waere es nicht besser, im Fall von Cache hit einfach set_object_cache ohne
+        # notify_func= aufzurufen?
         # when caching we dump the executable once the module finished compiling
         def save_to_cache(module, buffer):
             if cache and not Path(cache).exists():
@@ -136,6 +158,8 @@ class Model:
 
         # construct entry func
         addr = self._execution_engine.get_function_address("forest_root")
+        # evtl. besser den Ctypes-Typen auf Modulebene hinzuschreiben und hier
+        # nur den pointer zu erzeugen (also "ENTRY_FUNC_TYPE(addr)" oder so).
         # CFUNCTYPE params: void return, pointer to data, pointer to results arr, start_idx, end_idx
         # Drops GIL during call, re-aquires it after
         self._c_entry_func = CFUNCTYPE(
@@ -150,6 +174,8 @@ class Model:
         The model needs to be compiled before prediction.
 
         :param data: Pandas df, numpy 2D array or Python list. For fastest speed pass 2D float64 numpy arrays only.
+        Wenn es ein df ist, wie muss dieser aussehen?
+        Gibt es eigentlich einen Check, dass data das richtige Format hat? z.B. richtige Anzahl features
         :param n_jobs: Number of threads to use for prediction. Defaults to number of CPUs. For single-row prediction
             this should be set to 1.
         :return: 1D numpy array (dtype float64)
@@ -167,6 +193,7 @@ class Model:
         preds = np.zeros(n_preds, dtype=np.float64)
         ptr_preds = preds.ctypes.data_as(POINTER(c_double))
         if n_jobs > 1:
+            # was ist die Bedeutung des Teils nach dem "+"?
             batchsize = n_preds // n_jobs + (n_preds % n_jobs > 0)
 
             def f(start_idx):
@@ -179,14 +206,23 @@ class Model:
                     executor.submit(f, i)
         else:
             self._c_entry_func(ptr_data, ptr_preds, 0, n_preds)
+
+        # Es koennte nuetzlich sein, als dritte Option fuer die Parallelisierung
+        # zu ermoeglichen, dass man seinen eigenen Code fuer Parallelisierung nutzt.
+        # Ich habe nicht genau durchdacht wie das aussehen koennte, aber ich denke es
+        # waere hilfreich den ganzen Preprocessing-Kram (to-1d, to-ctypes, ...) separat
+        # ausfuehren zu koenne, sodass ich so etwas hinschreiben kann:
+        #   inputs, outputs, func = prepare(data)
+        #   my_run_parallel(inputs, outputs, func)
         return self.objective_transf(preds)
 
     def _data_from_pandas(self, data):
+        # Was macht diese Funktion?
+        # Kann man sie von der Model-Klasse trennen?
         if len(data.shape) != 2 or data.shape[0] < 1:
             raise ValueError("Input data must be 2D and non-empty.")
         cat_cols = list(data.select_dtypes(include=["category"]).columns)
         if len(cat_cols) != len(self._pandas_categorical):
-            print(cat_cols, self._pandas_categorical)
             raise ValueError(
                 "The categorical features passed don't match the train dataset."
             )
@@ -206,6 +242,7 @@ class Model:
         return data
 
     def _to_1d_ndarray(self, data):
+        # Von Model-Klasse trennen
         if isinstance(data, list):
             try:
                 data = np.array(data, dtype=np.float64)

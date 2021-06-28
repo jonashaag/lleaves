@@ -24,6 +24,10 @@ class Tree:
 
 class Node:
     def is_leaf(self):
+        # Ggf. zu property machen:
+        # Falls man einen Typo macht und `node.is_leaf` ohne `()` schreibt, ist
+        # die Expression immer truthy (weil "boundmethod" Objekte immer truthy
+        # sind). Django hat deshalb `is_authenticated()` zu einer property geaendert.
         return isinstance(self, LeafNode)
 
 

@@ -16,6 +16,14 @@ def get_objective_func(obj):
     Given the objective=obj entry in the model.txt, return callable
     :return: callable implementing the correct result transformation as np.ufunc
     """
+    # Kann man das hier ersetzen durch ein map lookup? a la:
+    # f = {
+    #   "xentropy": _get_sigmoid(1.0),
+    #   "poisson": np.exp,
+    #  ...
+    # }[obj[0]]
+    # Und koennte man "obj" vllt besser benennen und in zwei Argumente aufteilen?
+
     if obj[0] == "binary":
         func, alpha = obj[1].split(":")
         f = _get_sigmoid(float(alpha))
