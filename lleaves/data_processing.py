@@ -17,9 +17,12 @@ except ImportError:
 def _dataframe_to_ndarray(data, pandas_categories: List[List]):
     """
     Converts the given dataframe into a 2D numpy array, without checking dimensions.
+    Docstring ist nicht so hilfreich. Hier passiert viel mehr als dass ein df nach numpy
+    konvertiert wird (sonst wäre es einfach "return df.values").
     :param data: 2D pandas dataframe.
     :param pandas_categories: list of lists. For each column a list of all categories in this column.
         The ordering of columns and of categories within each column should match the training dataset.
+        Beispiel wäre hilfreich.
     :return: 2D np.ndarray, dtype float64 or float32
     """
     cat_cols = list(data.select_dtypes(include=["category"]).columns)
@@ -45,6 +48,8 @@ def _dataframe_to_ndarray(data, pandas_categories: List[List]):
 
 
 def _list_to_ndarray(data):
+    # Finde diese Funktion nicht sinnvoll, sie ist trivial und verschlechtert das
+    # Error reporting (Grund warum es nicht konvertiert werden kann wird gelöscht)
     try:
         data = np.array(data, dtype=np.float64)
     except BaseException:
@@ -54,6 +59,9 @@ def _list_to_ndarray(data):
 
 def data_to_ndarray(data, pandas_categorical):
     """
+    Hier fehlt wieder Info wie genau "data" aussieht.
+    Es reicht, die Parameter in dieser Funktion zu dokumentieren (die Funktionen
+    oben sind ja private)
 
     :param data: Pandas df, numpy 2D array or Python list.
     :param pandas_categorical: list of lists. For each categorical column in dataframe, a list of its categories.
@@ -79,6 +87,8 @@ def ndarray_to_1Darray(data):
     :param data: 2D numpy array.
     :return: (1D numpy array (dtype float64), number of rows in original data)
     """
+    # könnte man nicht sowas machen wie data.astype(float64).ravel?
+    # dieses "n_predictions" gehört nicht in diese Funktion.
     n_predictions = data.shape[0]
     if data.dtype == np.float64:
         data = np.array(data.reshape(data.size), dtype=np.float64, copy=False)

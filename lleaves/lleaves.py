@@ -108,6 +108,8 @@ class Model:
                 "Functionality only available after compilation. Run model.compile()."
             )
 
+        # Diesen ganzen Teil in eine Funktion auslagern "user_data_to_memory_pointer" oder so?
+        # [von hier]
         # convert all input types to numpy arrays
         data = data_to_ndarray(data, self._pandas_categorical)
         if len(data.shape) != 2 or data.shape[1] != self.num_feature():
@@ -118,6 +120,7 @@ class Model:
         # setup input data
         data, n_predictions = ndarray_to_1Darray(data)
         ptr_data = data.ctypes.data_as(POINTER(c_double))
+        # [bis hier]
 
         # setup output data (predictions)
         predictions = np.empty(n_predictions, dtype=np.float64)

@@ -6,6 +6,7 @@ class Forest:
         """
         :param trees: list of trees
         :param features: list of entries of type Feature.
+        Doku in Type-Annotation konvertieren und Doku löschen?
         """
         self.trees = trees
         self.n_args = len(features)
