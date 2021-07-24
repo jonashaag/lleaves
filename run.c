@@ -3,8 +3,9 @@
 #include <time.h>
 
 #define T double
-#define F 5
-#define n_in 50000000
+#define F 13
+#define N_IN 5000000
+#define N_REPEAT 5
 
 void forest_root(T *, T *, int, int);
 
@@ -13,13 +14,15 @@ int main(int argc, char **argv) {
   (void)argv;
   time_t t, t2;
   srand((unsigned) time(&t));
-  T *in = malloc(n_in * F * sizeof(T));
-  T *out = malloc(n_in * sizeof(T));
-  for (size_t i = 0; i < n_in * F; ++i) {
+  T *in = malloc(N_IN * F * sizeof(T));
+  T *out = malloc(N_IN * sizeof(T));
+  for (size_t i = 0; i < N_IN * F; ++i) {
     in[i] = (T)rand()/((T)RAND_MAX/(T)50);
   }
   time(&t);
-  forest_root(in, out, 0, n_in);
+  for (size_t i = 0; i < N_REPEAT; ++i) {
+    forest_root(in, out, 0, N_IN);
+  }
   time(&t2);
   printf("%ld\n", t2 - t);
   printf("%lf\n", out[0]);
