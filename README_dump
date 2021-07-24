@@ -1,0 +1,11 @@
+Compile with lleaves:
+
+python -c 'import lleaves; lleaves.Model(model_file="tests/models/NYC_taxi/model.txt").compile(cache="llvm.o")'
+
+Run llvm benchmark:
+
+cc -Wall -Wextra run.c -c -o run.o && cc run.o llvm.o -o llvm && ./llvm
+
+Run C benchmark:
+
+cc -Wall -Wextra run.c -c -o run.o && cc -Wall -Wextra -Wno-unused-parameter -O3 c.c -c -o c.o && cc run.o c.o -o c && ./c
